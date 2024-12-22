@@ -1,0 +1,56 @@
+# Swaylock config for the theme "Red Stone" by Prasanthrangan.
+# To use this config simply rename the file to "config" within /.config/Swaylock/
+daemonize
+
+show-failed-attempts
+clock
+screenshot
+
+effect-blur=5x3
+effect-vignette=0.35:1
+
+color=#4c0c16
+
+font="Inter"
+
+#Commenting indicator will turn it off untill a key has been pressed
+#indicator
+indicator-radius=180
+indicator-thickness=25
+
+# Colour and theming for theme "Red Stone"
+line-color=#4c0c16
+ring-color=#4c0c16
+inside-color=#0f0204
+key-hl-color=#ff294b
+separator-color=#ff294b
+text-color=#ffffff
+text-caps-lock-color=""
+line-ver-color=#190407
+ring-ver-color=#190407
+inside-ver-color=#4c0c16
+text-ver-color=#ff294b
+ring-wrong-color=#4c0c16
+text-wrong-color=#4c0c16
+inside-wrong-color=#190407
+inside-clear-color=#190407
+text-clear-color=#ff294b
+ring-clear-color=#ff294b
+line-clear-color=#190407
+line-wrong-color=#190407
+bs-hl-color=#0f0204
+
+#Shows the current keyboard layout
+#show-keyboard-layout
+
+#Grace is the period before it is required to input a password to unlock
+grace=10
+grace-no-mouse
+grace-no-touch
+
+# %R is 24hr clock
+datestr=%a, %B %e
+#datestr=%R
+timestr=%R
+fade-in=1
+ignore-empty-password
