@@ -7,3 +7,12 @@ VolumeBar 1.0 VolumeBar.qml
 ControlCenter 1.0 ControlCenter.qml
 Scratchpad 1.0 Scratchpad.qml
 SystemHUD 1.0 SystemHUD.qml
+CombatSystems 1.0 CombatSystems.qml
+Comms 1.0 Comms.qml
+Tactical 1.0 Tactical.qml
+Audio 1.0 Audio.qml
+ScrambleAnim 1.0 ScrambleAnim.qml
+HudPanel 1.0 HudPanel.qml
+StatBar 1.0 StatBar.qml
+TriangleViz 1.0 TriangleViz.qml
+PowerMenu 1.0 PowerMenu.qml

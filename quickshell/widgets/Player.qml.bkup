@@ -55,13 +55,11 @@ Item {
         running: false
     }
 
-    property bool locked: false
-
     IpcHandler {
         target: "player"
-        function toggle(): void { if (!root.locked) root.toggleVisible() }
-        function show(): void   { if (!root.locked && !root.shown) root.toggleVisible() }
-        function hide(): void   { if (!root.locked &&  root.shown) root.toggleVisible() }
+        function toggle(): void { root.toggleVisible() }
+        function show(): void   { if (!root.shown) root.toggleVisible() }
+        function hide(): void   { if ( root.shown) root.toggleVisible() }
     }
 
     function toggleVisible() {

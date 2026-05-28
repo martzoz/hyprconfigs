@@ -105,35 +105,22 @@ ShellRoot {
     property string tickerText: "接続中 // COMBAT SYSTEMS ACTIVE // データ処理中 // SYS:NOMINAL // YoRHa TYPE-A // 全システム正常 // STANDING BY // 脅威レベル:中 // POD LINK ESTABLISHED // FOR THE GLORY OF MANKIND // "
 
     // ── Timers ──
-    // scanY — only needed when COMBAT or TACTICAL visible (scanline effect)
-    Timer { interval:16;   running: root.showCombat || root.showTactical; repeat:true; onTriggered: root.scanY = (root.scanY+1)%900 }
-    // tick — only needed when COMBAT visible (pulsing dots)
-    Timer { interval:500;  running: root.showCombat; repeat:true; onTriggered: root.tick = (root.tick+1)%4 }
-    // logIndex — only needed when TACTICAL visible
-    Timer { interval:3500; running: root.showTactical; repeat:true; onTriggered: root.logIndex = (root.logIndex+1) % root.missionLog.length }
-    // IP refresh — infrequent, always fine
-    Timer { interval:30000; running:true; repeat:true; onTriggered: ipProc.running = true }
-    // wavePhase + network smooth — only needed when COMMS visible
+    Timer { interval:16;   running:true; repeat:true; onTriggered: root.scanY = (root.scanY+1)%900 }
+    Timer { interval:500;  running:true; repeat:true; onTriggered: root.tick  = (root.tick+1)%4 }
+    Timer { interval:3500; running:true; repeat:true; onTriggered: root.logIndex = (root.logIndex+1) % root.missionLog.length }
+    Timer { interval:30000;running:true; repeat:true; onTriggered: ipProc.running = true }
     Timer {
-        interval:20; running: root.showComms; repeat:true
+        interval:16; running:true; repeat:true
         onTriggered: {
-            root.wavePhase = root.wavePhase + 0.05
+            root.wavePhase = root.wavePhase + 0.04
             var td = Math.min(parseInt(root.netDown)||0,10000000)
             var tu = Math.min(parseInt(root.netUp)||0,10000000)
             root.smoothDl = root.smoothDl + (td - root.smoothDl)*0.05
             root.smoothUl = root.smoothUl + (tu - root.smoothUl)*0.05
         }
     }
-    // Hardware polling — delayed 500ms after any panel reveals to avoid competing with wipe animation
-    property bool anyVisible: root.showCombat || root.showComms || root.showTactical || root.showAudio
-    onAnyVisibleChanged: {
-        if (anyVisible) pollDelayTimer.restart()
-        else hardwareTimer.stop()
-    }
-    Timer { id: pollDelayTimer; interval: 500; repeat: false; onTriggered: hardwareTimer.restart() }
     Timer {
-        id: hardwareTimer
-        interval:2000; running: false; repeat:true
+        interval:2000; running:true; repeat:true
         onTriggered: {
             cpuProc.running=true; ramProc.running=true; gpuProc.running=true
             netProc.running=true; uptimeProc.running=true; kernelProc.running=true; hostnameProc.running=true
@@ -145,31 +132,13 @@ ShellRoot {
     }
 
     // ── IPC ──
-    property bool locked: false
-    property real globalOpacity: 1.0
-    Behavior on globalOpacity { NumberAnimation { duration: 150 } }
-
     IpcHandler {
         target: "hud"
-        function toggle(): void   {
-            if (root.locked) return
-            var s = !(root.showCombat && root.showComms && root.showTactical && root.showAudio)
-            root.showCombat=s; root.showComms=s; root.showTactical=s; root.showAudio=s
-        }
-        function combat(): void   { if (!root.locked) root.showCombat   = !root.showCombat   }
-        function comms(): void    { if (!root.locked) root.showComms    = !root.showComms    }
-        function tactical(): void { if (!root.locked) root.showTactical = !root.showTactical }
-        function audio(): void    { if (!root.locked) root.showAudio    = !root.showAudio    }
-    }
-
-    // Called by WindowManager
-    function showAll() {
-        locked = false
-        showCombat = true; showComms = true; showTactical = true; showAudio = true
-    }
-    function hideAll() {
-        showCombat = false; showComms = false; showTactical = false; showAudio = false
-        locked = true
+        function toggle(): void   { var s = !(root.showCombat && root.showComms && root.showTactical && root.showAudio); root.showCombat=s; root.showComms=s; root.showTactical=s; root.showAudio=s }
+        function combat(): void   { root.showCombat   = !root.showCombat   }
+        function comms(): void    { root.showComms    = !root.showComms    }
+        function tactical(): void { root.showTactical = !root.showTactical }
+        function audio(): void    { root.showAudio    = !root.showAudio    }
     }
 
     // ── Processes ──
@@ -260,7 +229,7 @@ ShellRoot {
         id: cavaProc
         command: ["sh", "-c",
             "mkdir -p /tmp/qs-hud && " +
-            "printf '[general]\\nbars=48\\nframerate=120\\nsleep_timer=5\\nsensitivity=100\\n[input]\\n[output]\\nmethod=raw\\nraw_target=/dev/stdout\\ndata_format=ascii\\nascii_max_range=100\\n[smoothing]\\nnoise_reduction=65\\n[eq]\\n1=1.5\\n2=1.2\\n3=1.0\\n4=1.2\\n5=1.5\\n' > /tmp/qs-hud/cava.cfg && " +
+            "printf '[general]\\nbars=48\\nframerate=165\\nsleep_timer=0\\n[output]\\nmethod=raw\\nraw_target=/dev/stdout\\ndata_format=ascii\\nascii_max_range=100\\n' > /tmp/qs-hud/cava.cfg && " +
             "cava -p /tmp/qs-hud/cava.cfg"
         ]
         running: true
@@ -288,12 +257,7 @@ ShellRoot {
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             visible: modelData.name === "DP-1"
 
-            // Fade container — opacity controlled by WindowManager
-            Item {
-                anchors.fill: parent
-                opacity: root.globalOpacity
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-
+            readonly property color curtainCol: Qt.rgba(200/255,184/255,154/255,1.0)
 
             // ── PANEL 1: COMBAT SYSTEMS ──
             Item {
@@ -301,7 +265,7 @@ ShellRoot {
                 x: 120; y: 140; width: 1000; height: 420
                 clip: true; visible: false
                 CombatSystems { hud: root }
-                Rectangle { id:curtain1; anchors.top:parent.top; anchors.bottom:parent.bottom; x:0; width:parent.width; color:Qt.rgba(200/255,184/255,154/255,1.0); z:10 }
+                Rectangle { id:curtain1; anchors.top:parent.top; anchors.bottom:parent.bottom; x:0; width:parent.width; color:curtainCol; z:10 }
             }
             SequentialAnimation {
                 id: reveal1
@@ -324,7 +288,7 @@ ShellRoot {
                 x: 1220; y: 140; width: 1220; height: 420
                 clip: true; visible: false
                 Comms { hud: root }
-                Rectangle { id:curtain2; anchors.top:parent.top; anchors.bottom:parent.bottom; anchors.left:parent.left; width:parent.width; color:Qt.rgba(200/255,184/255,154/255,1.0); z:10 }
+                Rectangle { id:curtain2; anchors.top:parent.top; anchors.bottom:parent.bottom; anchors.left:parent.left; width:parent.width; color:curtainCol; z:10 }
             }
             SequentialAnimation {
                 id: reveal2
@@ -347,7 +311,7 @@ ShellRoot {
                 x: 120; y: modelData.height-800; width: 580; height: 680
                 clip: true; visible: false
                 Tactical { hud: root }
-                Rectangle { id:curtain3; anchors.top:parent.top; anchors.bottom:parent.bottom; x:0; width:parent.width; color:Qt.rgba(200/255,184/255,154/255,1.0); z:10 }
+                Rectangle { id:curtain3; anchors.top:parent.top; anchors.bottom:parent.bottom; x:0; width:parent.width; color:curtainCol; z:10 }
             }
             SequentialAnimation {
                 id: reveal3
@@ -371,13 +335,14 @@ ShellRoot {
                 width: modelData.width-920; height: 680
                 clip: true; visible: false
                 Audio { hud: root }
-                Rectangle { id:curtain4; anchors.top:parent.top; anchors.bottom:parent.bottom; anchors.left:parent.left; width:parent.width; color:Qt.rgba(200/255,184/255,154/255,1.0); z:10 }
+                Rectangle { id:curtain4; anchors.top:parent.top; anchors.bottom:parent.bottom; anchors.left:parent.left; width:parent.width; color:curtainCol; z:10 }
             }
             SequentialAnimation {
                 id: reveal4
                 onStarted: { wipe4.x=modelData.width+2; wipe4.visible=true; curtain4.width=wipe4.width }
-                NumberAnimation { target:wipe4;    property:"x";     from:modelData.width+2; to:800;  duration:460; easing.type:Easing.OutExpo }
-                NumberAnimation { target:curtain4; property:"width"; from:wipe4.width;       to:0;    duration:300; easing.type:Easing.OutExpo }
+                PauseAnimation { duration:160 }
+                NumberAnimation { target:wipe4;    property:"x";     from:modelData.width+2; to:800;  duration:500; easing.type:Easing.OutExpo }
+                NumberAnimation { target:curtain4; property:"width"; from:wipe4.width;       to:0;    duration:340; easing.type:Easing.OutExpo }
                 onFinished: { curtain4.width=0 }
             }
             SequentialAnimation {
@@ -404,7 +369,6 @@ ShellRoot {
               if (root.showTactical) reveal3.start()
               if (root.showAudio)    reveal4.start()
             }
-            } // end fade Item
         }
     }
 }

@@ -154,22 +154,6 @@ ShellRoot {
     }
 
 
-    // ── POWER MENU ──
-    Variants {
-        model: Quickshell.screens
-        PanelWindow {
-            required property var modelData
-            screen: modelData
-            anchors.top: true; anchors.left: true; anchors.right: true; anchors.bottom: true
-            exclusionMode: ExclusionMode.Ignore
-            aboveWindows: powerItem.menuOpen
-            color: "transparent"
-            WlrLayershell.keyboardFocus: powerItem.menuOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-            implicitWidth: modelData.width; implicitHeight: modelData.height
-            PowerMenu { id: powerItem; anchors.fill: parent }
-        }
-    }
-
     // ── PLAYER ──
     Variants {
         model: Quickshell.screens

@@ -1,0 +1,301 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+// ── COMMS panel content ──
+Item {
+    id: panel
+    required property var hud
+    anchors.fill: parent
+
+    HudPanel {
+        anchors.fill: parent
+        title: "COMMS"; subtitle: "ネットワーク接続"
+
+        // ── Waveform — bottom strip ──
+        Canvas {
+            id: waveCanvas
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+            height: 220; z: 1
+
+            // Throttled to 40fps — smooth enough for sine waves
+            Timer {
+                interval: 25; running: true; repeat: true
+                onTriggered: waveCanvas.requestPaint()
+            }
+
+            onPaint: {
+                var ctx = getContext("2d"); ctx.clearRect(0,0,width,height)
+                var phase = hud.wavePhase
+                var dl = hud.smoothDl, ul = hud.smoothUl, maxB = 10000000
+                var dlAmp = (8 + (dl/maxB)*28)*1.08, ulAmp = (6 + (ul/maxB)*22)*1.08
+                var dlFreq = 0.012+(ul/maxB)*0.018, ulFreq = 0.008+(dl/maxB)*0.014
+                var waves = [
+                    {amp:dlAmp,      freq:dlFreq,      phOff:0,   alpha:0.22, r:200/255,g:168/255,b:74/255 },
+                    {amp:dlAmp*0.6,  freq:dlFreq*1.7,  phOff:1.2, alpha:0.14, r:200/255,g:168/255,b:74/255 },
+                    {amp:dlAmp*0.35, freq:dlFreq*2.9,  phOff:2.4, alpha:0.09, r:200/255,g:168/255,b:74/255 },
+                    {amp:ulAmp,      freq:ulFreq,      phOff:0.5, alpha:0.18, r:74/255, g:154/255,b:106/255},
+                    {amp:ulAmp*0.55, freq:ulFreq*1.8,  phOff:1.8, alpha:0.11, r:74/255, g:154/255,b:106/255},
+                    {amp:ulAmp*0.3,  freq:ulFreq*3.1,  phOff:3.0, alpha:0.07, r:74/255, g:154/255,b:106/255},
+                ]
+                for (var w=0;w<waves.length;w++) {
+                    var wv=waves[w], ph=phase+wv.phOff
+                    ctx.beginPath()
+                    for (var x=0;x<=width;x+=2) {
+                        var y=height/2+Math.sin(x*wv.freq+ph)*wv.amp+Math.sin(x*wv.freq*0.5+ph*1.3)*wv.amp*0.3
+                        if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y)
+                    }
+                    ctx.strokeStyle=Qt.rgba(wv.r,wv.g,wv.b,wv.alpha); ctx.lineWidth=1.5; ctx.stroke()
+                }
+            }
+        }
+
+        // ── Foreground content ──
+        Column {
+            anchors { fill: parent; bottomMargin: 20 }
+            spacing: 0; z: 2
+
+            Row {
+                width:parent.width; height:80; spacing:0
+                Column {
+                    width:parent.parent.width/2; anchors.verticalCenter:parent.verticalCenter; spacing:5
+                    Text { text:"▼  DOWNLOAD"; font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.5 }
+                    Text { text:hud.fmtRate(parseInt(hud.netDown)||0); font.family:"Share Tech Mono"; font.pixelSize:22; font.letterSpacing:1; font.weight:Font.DemiBold; color:hud.accentGold }
+                    Text { text:"TOTAL  "+hud.fmt(hud.netTotalRx); font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1.5; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.45 }
+                }
+                Column {
+                    width:parent.parent.width/2; anchors.verticalCenter:parent.verticalCenter; spacing:5
+                    Text { text:"▲  UPLOAD"; font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.5 }
+                    Text { text:hud.fmtRate(parseInt(hud.netUp)||0); font.family:"Share Tech Mono"; font.pixelSize:22; font.letterSpacing:1; font.weight:Font.DemiBold; color:hud.green }
+                    Text { text:"TOTAL  "+hud.fmt(hud.netTotalTx); font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1.5; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.45 }
+                }
+            }
+
+            Rectangle { width:parent.width; height:1; color:hud.lineVsoft }
+            Item { width:1; height:6 }
+
+            // Network history graphs
+            Row {
+                width: parent.width; spacing: 8
+                Column {
+                    width: (parent.parent.width-8)/2; spacing: 2
+                    Row { width: parent.width
+                        Text { text:"▼"; font.family:"Share Tech Mono"; font.pixelSize:8; color:hud.accentGold; opacity:0.6; width:12 }
+                        Text { text: hud.downHistory.length>0?hud.fmtRate(hud.downHistory[hud.downHistory.length-1]):"0 B/s"; font.family:"Share Tech Mono"; font.pixelSize:8; color:hud.accentGold; opacity:0.7 }
+                    }
+                    Canvas {
+                        width:parent.width; height:28
+                        property var hist: hud.downHistory
+                        onHistChanged: requestPaint()
+                        onPaint: {
+                            var ctx=getContext("2d"); ctx.clearRect(0,0,width,height)
+                            var d=hist; if(!d||d.length<2) return
+                            var n=d.length,H=height-4,W=width,mx=Math.max.apply(null,d); if(mx<1)mx=1
+                            var c=hud.accentGold
+                            ctx.beginPath()
+                            for(var i=0;i<n;i++){var x=i/(hud.historyMax-1)*W,y=2+H-(d[i]/mx)*H;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}
+                            ctx.lineTo((n-1)/(hud.historyMax-1)*W,2+H);ctx.lineTo(0,2+H);ctx.closePath()
+                            var g=ctx.createLinearGradient(0,2,0,2+H);g.addColorStop(0,Qt.rgba(c.r,c.g,c.b,0.2));g.addColorStop(1,Qt.rgba(c.r,c.g,c.b,0.02));ctx.fillStyle=g;ctx.fill()
+                            ctx.beginPath()
+                            for(var j=0;j<n;j++){var lx=j/(hud.historyMax-1)*W,ly=2+H-(d[j]/mx)*H;if(j===0)ctx.moveTo(lx,ly);else ctx.lineTo(lx,ly)}
+                            ctx.strokeStyle=Qt.rgba(c.r,c.g,c.b,0.7);ctx.lineWidth=1.5;ctx.stroke()
+                        }
+                    }
+                }
+                Column {
+                    width: (parent.parent.width-8)/2; spacing: 2
+                    Row { width: parent.width
+                        Text { text:"▲"; font.family:"Share Tech Mono"; font.pixelSize:8; color:hud.green; opacity:0.6; width:12 }
+                        Text { text: hud.upHistory.length>0?hud.fmtRate(hud.upHistory[hud.upHistory.length-1]):"0 B/s"; font.family:"Share Tech Mono"; font.pixelSize:8; color:hud.green; opacity:0.7 }
+                    }
+                    Canvas {
+                        width:parent.width; height:28
+                        property var hist: hud.upHistory
+                        onHistChanged: requestPaint()
+                        onPaint: {
+                            var ctx=getContext("2d"); ctx.clearRect(0,0,width,height)
+                            var d=hist; if(!d||d.length<2) return
+                            var n=d.length,H=height-4,W=width,mx=Math.max.apply(null,d); if(mx<1)mx=1
+                            var c=hud.green
+                            ctx.beginPath()
+                            for(var i=0;i<n;i++){var x=i/(hud.historyMax-1)*W,y=2+H-(d[i]/mx)*H;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}
+                            ctx.lineTo((n-1)/(hud.historyMax-1)*W,2+H);ctx.lineTo(0,2+H);ctx.closePath()
+                            var g=ctx.createLinearGradient(0,2,0,2+H);g.addColorStop(0,Qt.rgba(c.r,c.g,c.b,0.2));g.addColorStop(1,Qt.rgba(c.r,c.g,c.b,0.02));ctx.fillStyle=g;ctx.fill()
+                            ctx.beginPath()
+                            for(var j=0;j<n;j++){var lx=j/(hud.historyMax-1)*W,ly=2+H-(d[j]/mx)*H;if(j===0)ctx.moveTo(lx,ly);else ctx.lineTo(lx,ly)}
+                            ctx.strokeStyle=Qt.rgba(c.r,c.g,c.b,0.7);ctx.lineWidth=1.5;ctx.stroke()
+                        }
+                    }
+                }
+            }
+
+            Item { width:1; height:6 }
+            Rectangle { width:parent.width; height:1; color:hud.lineVsoft }
+            Item { width:1; height:6 }
+
+            // KERNEL / SESSION / UNIT
+            Row {
+                width: parent.width; spacing: 0
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"KERNEL"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Text { text:hud.kernel; font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.6; elide:Text.ElideRight; width:parent.width-8 }
+                }
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"SESSION"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Text { text:hud.uptime.toUpperCase(); font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.6 }
+                }
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"UNIT"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Text { text:hud.hostname.toUpperCase(); font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.6 }
+                }
+            }
+
+            Item { width:1; height:6 }
+            Rectangle { width:parent.width; height:1; color:hud.lineVsoft }
+            Item { width:1; height:4 }
+
+            // SIGNAL / UPLINK / BUNKER LINK
+            Row {
+                width: parent.width; spacing: 0
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"SIGNAL"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Text {
+                        text: { var b=parseInt(hud.netDown)||0; return b>1000000?"STRONG":b>100000?"NOMINAL":b>1000?"WEAK":"IDLE" }
+                        font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium
+                        color: { var b=parseInt(hud.netDown)||0; return b>1000000?hud.green:b>100000?hud.accentGold:b>1000?"#c8a84a":hud.inkSoft }
+                        opacity: 0.6
+                    }
+                }
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"UPLINK"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Text {
+                        text: { var b=parseInt(hud.netUp)||0; return b>500000?"ACTIVE":b>10000?"STANDBY":"SILENT" }
+                        font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium
+                        color: { var b=parseInt(hud.netUp)||0; return b>500000?hud.green:b>10000?hud.accentGold:hud.inkSoft }
+                        opacity: 0.6
+                    }
+                }
+                Column { width:parent.parent.width/3; spacing:3
+                    Text { text:"BUNKER LINK"; font.family:"Share Tech Mono"; font.pixelSize:8; font.letterSpacing:2; font.weight:Font.Medium; color:hud.inkSoft; opacity:0.4 }
+                    Row { spacing:5
+                        Rectangle {
+                            width:5; height:5; anchors.verticalCenter:parent.verticalCenter; color:hud.green
+                            SequentialAnimation on opacity { loops:Animation.Infinite; running:true
+                                NumberAnimation{to:0.2;duration:1100} NumberAnimation{to:1.0;duration:1100} }
+                        }
+                        Text { text:"STABLE"; font.family:"Share Tech Mono"; font.pixelSize:9; font.letterSpacing:1; font.weight:Font.Medium; color:hud.green; opacity:0.8 }
+                    }
+                }
+            }
+
+            Item { width:1; height:6 }
+            Rectangle { width:parent.width; height:1; color:hud.lineVsoft }
+            Item { width:1; height:4 }
+
+            // ── Ticker with independent shimmers ──
+            Item {
+                width: parent.width; height: 18; clip: true
+
+                property real shimmer1: 0
+                property real shimmer2: 0
+                property real shimmer3: 0
+                property real shimmer4: 0
+                property real shimmer5: 0
+                NumberAnimation on shimmer1 { from: -20; to: width+20; duration: 6000;  loops: Animation.Infinite; running: true; easing.type: Easing.Linear }
+                NumberAnimation on shimmer2 { from: -20; to: width+20; duration: 9500;  loops: Animation.Infinite; running: true; easing.type: Easing.Linear }
+                NumberAnimation on shimmer3 { from: -20; to: width+20; duration: 14000; loops: Animation.Infinite; running: true; easing.type: Easing.Linear }
+                NumberAnimation on shimmer4 { from: -20; to: width+20; duration: 19000; loops: Animation.Infinite; running: true; easing.type: Easing.Linear }
+                NumberAnimation on shimmer5 { from: -20; to: width+20; duration: 24000; loops: Animation.Infinite; running: true; easing.type: Easing.Linear }
+
+                Text {
+                    id: commsTicker
+                    text: hud.tickerText + hud.tickerText
+                    font.family: "Share Tech Mono"; font.pixelSize: 8; font.letterSpacing: 1.5
+                    color: Qt.rgba(200/255,184/255,154/255,0.2); y: 3
+                    NumberAnimation on x {
+                        id: commsTickerAnim
+                        from: 0; to: -commsTicker.implicitWidth/2
+                        duration: 32000; loops: Animation.Infinite; running: true
+                        easing.type: Easing.Linear
+                    }
+                    Component.onCompleted: commsTickerAnim.restart()
+                }
+
+                Canvas {
+                    anchors.fill: parent
+                    property real s1: parent.shimmer1
+                    property real s2: parent.shimmer2
+                    property real s3: parent.shimmer3
+                    property real s4: parent.shimmer4
+                    property real s5: parent.shimmer5
+                    onS1Changed: requestPaint()
+                    onS2Changed: requestPaint()
+                    onS3Changed: requestPaint()
+                    onS4Changed: requestPaint()
+                    onS5Changed: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        var bands = [s1, s2, s3, s4, s5]
+                        var alphas    = [0.12, 0.09, 0.11, 0.07, 0.09]
+                        var halfWidths = [8,    6,    10,   5,    7   ]
+                        for (var i = 0; i < bands.length; i++) {
+                            var cx = bands[i]
+                            var hw = halfWidths[i]
+                            var grd = ctx.createLinearGradient(cx - hw, 0, cx + hw, 0)
+                            grd.addColorStop(0.0, Qt.rgba(200/255,184/255,154/255,0.0))
+                            grd.addColorStop(0.5, Qt.rgba(200/255,184/255,154/255,alphas[i]))
+                            grd.addColorStop(1.0, Qt.rgba(200/255,184/255,154/255,0.0))
+                            ctx.fillStyle = grd
+                            ctx.fillRect(0, 0, width, height)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Bottom overlay: coordinates + IP + signal bars ──
+        Item {
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+            height: 28; z: 3
+
+            Text {
+                id: coordText
+                anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
+                font.family: "Share Tech Mono"; font.pixelSize: 8; font.letterSpacing: 1.2
+                color: hud.inkSoft; opacity: 0.35
+                property string clockStr: "--:--:--"
+                text: "35.6762° N  139.6503° E  //  UTC " + clockStr
+                Timer {
+                    interval: 1000; running: true; repeat: true
+                    onTriggered: {
+                        var d=new Date()
+                        coordText.clockStr = String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0")+":"+String(d.getUTCSeconds()).padStart(2,"0")
+                    }
+                }
+            }
+            Row {
+                anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                spacing: 8
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: "Share Tech Mono"; font.pixelSize: 8; font.letterSpacing: 1.2
+                    color: hud.inkSoft; opacity: 0.35; text: hud.localIp
+                }
+                Row { spacing: 3
+                    Repeater { model: 5
+                        Rectangle {
+                            width:4; height:4+index*3; anchors.bottom:parent.bottom
+                            property real dl: parseInt(hud.netDown)||0
+                            property int threshold: [0,1000,100000,500000,1000000][index]
+                            color: dl>threshold?(dl>1000000?hud.green:hud.accentGold):hud.inkSoft
+                            opacity: dl>threshold?0.85:0.15
+                            Behavior on color   { ColorAnimation  { duration:400 } }
+                            Behavior on opacity { NumberAnimation { duration:400 } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

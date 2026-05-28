@@ -1,0 +1,328 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+
+Item {
+    id: root
+    anchors.fill: parent
+
+    property bool menuOpen: false
+    property bool wipeHideRunning: false
+
+    // ── Open / Close ──
+    function openMenu() {
+        menuOpen = true
+        wipeHost.visible = true
+        wipeHost.opacity = 0
+        fadeIn.start()
+    }
+
+    function closeMenu() {
+        fadeOut.start()
+    }
+
+    // ── IPC ──
+    IpcHandler {
+        target: "power"
+        function toggle(): void { menuOpen ? root.closeMenu() : root.openMenu() }
+        function open(): void   { if (!menuOpen) root.openMenu() }
+        function close(): void  { if ( menuOpen) root.closeMenu() }
+    }
+
+    // ── Fade animations ──
+    NumberAnimation {
+        id: fadeIn
+        target: wipeHost; property: "opacity"
+        from: 0.0; to: 1.0
+        duration: 180; easing.type: Easing.OutQuad
+        onFinished: wipeHost.opacity = 1.0
+    }
+    NumberAnimation {
+        id: fadeOut
+        target: wipeHost; property: "opacity"
+        from: 1.0; to: 0.0
+        duration: 150; easing.type: Easing.InQuad
+        onFinished: { wipeHost.visible = false; root.menuOpen = false }
+    }
+
+    // ── Click-off to close ──
+    MouseArea {
+        anchors.fill: parent
+        visible: root.menuOpen
+        onClicked: root.closeMenu()
+        z: 0
+    }
+
+    // ── Panel ──
+    Item {
+        id: wipeHost
+        width: 320
+        anchors.centerIn: parent
+        visible: false
+        opacity: 0
+        z: 1
+
+        // Prevent click-off from firing when clicking inside panel
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {} // consume
+        }
+
+        // ── Background ──
+        Rectangle {
+            anchors.fill: parent
+            color: "#0b0a09"
+            opacity: 0.97
+        }
+
+        // Corner accents
+        Rectangle { x:0;  y:0;  width:12; height:1; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:0;  y:0;  width:1;  height:12; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:parent.width-12; y:0; width:12; height:1; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:parent.width-1;  y:0; width:1; height:12; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:0;  y:parent.height-1; width:12; height:1; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:0;  y:parent.height-12; width:1; height:12; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:parent.width-12; y:parent.height-1; width:12; height:1; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+        Rectangle { x:parent.width-1;  y:parent.height-12; width:1; height:12; color:Qt.rgba(200/255,168/255,74/255,0.6) }
+
+        // Outer border
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(200/255,168/255,74/255,0.2)
+        }
+
+        Column {
+            id: menuCol
+            anchors { fill: parent; topMargin: 16; bottomMargin: 16; leftMargin: 16; rightMargin: 16 }
+            spacing: 0
+
+            // ── Title ──
+            Row {
+                width: parent.width; height: 28; spacing: 6
+                Rectangle {
+                    width: 5; height: 5; anchors.verticalCenter: parent.verticalCenter
+                    color: Qt.rgba(200/255,168/255,74/255,0.9)
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite; running: root.menuOpen
+                        NumberAnimation { to: 0.2; duration: 900 }
+                        NumberAnimation { to: 1.0; duration: 900 }
+                    }
+                }
+                Text {
+                    text: "SYSTEM"; font.family: "Share Tech Mono"; font.pixelSize: 10
+                    font.letterSpacing: 3; font.weight: Font.DemiBold
+                    color: Qt.rgba(200/255,168/255,74/255,0.9)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: "—— 電源管理"; font.family: "Share Tech Mono"; font.pixelSize: 8
+                    font.letterSpacing: 1; color: Qt.rgba(200/255,184/255,154/255,0.35)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Rectangle { width: parent.width; height: 1; color: Qt.rgba(200/255,184/255,154/255,0.08) }
+            Item { width: 1; height: 10 }
+
+            // ── Buttons ──
+            PowerBtn {
+                label: "LOCK";           icon: "⬡"; accent: "#4a9a6a"
+                holdRequired: false
+                onActivated: lockProc.running = true
+            }
+            Item { width: 1; height: 4 }
+            PowerBtn {
+                label: "SUSPEND";        icon: "◎"; accent: "#c8b89a"
+                holdRequired: false
+                onActivated: suspendProc.running = true
+            }
+            Item { width: 1; height: 4 }
+            PowerBtn {
+                label: "LOGOUT";         icon: "◈"; accent: "#c8a84a"
+                holdRequired: false
+                onActivated: logoutProc.running = true
+            }
+            Item { width: 1; height: 12 }
+            Rectangle { width: parent.width; height: 1; color: Qt.rgba(200/255,184/255,154/255,0.06) }
+            Item { width: 1; height: 12 }
+            PowerBtn {
+                label: "REBOOT";         icon: "↺"; accent: "#c8a84a"
+                holdRequired: true; holdDuration: 1500
+                onActivated: rebootProc.running = true
+            }
+            Item { width: 1; height: 4 }
+            PowerBtn {
+                label: "REBOOT TO UEFI"; icon: "⬡"; accent: "#c8a84a"
+                holdRequired: true; holdDuration: 1500
+                onActivated: uefiProc.running = true
+            }
+            Item { width: 1; height: 4 }
+            PowerBtn {
+                label: "SHUTDOWN";       icon: "⏻"; accent: "#c85a3a"
+                holdRequired: true; holdDuration: 2000
+                onActivated: shutdownProc.running = true
+            }
+
+            Item { width: 1; height: 14 }
+            Rectangle { width: parent.width; height: 1; color: Qt.rgba(200/255,184/255,154/255,0.06) }
+            Item { width: 1; height: 8 }
+
+            // ── Footer ──
+            Row {
+                width: parent.width
+                Text {
+                    text: "TTY2  //  chvt 2"
+                    font.family: "Share Tech Mono"; font.pixelSize: 7; font.letterSpacing: 1
+                    color: Qt.rgba(200/255,184/255,154/255,0.2)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Item { width: parent.width - tLeft.implicitWidth - tRight.implicitWidth - 2; height: 1 }
+                Text {
+                    id: tRight
+                    property string t: "--:--"
+                    text: t
+                    font.family: "Share Tech Mono"; font.pixelSize: 7; font.letterSpacing: 1
+                    color: Qt.rgba(200/255,184/255,154/255,0.2)
+                    Timer {
+                        interval: 1000; running: true; repeat: true
+                        onTriggered: {
+                            var d = new Date()
+                            parent.t = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0")
+                        }
+                    }
+                }
+                Text { id: tLeft; visible: false; text: "TTY2  //  chvt 2" }
+            }
+        }
+
+        // Escape key to close
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Escape) { root.closeMenu(); event.accepted = true }
+        }
+        focus: root.menuOpen
+
+        // implicitHeight driven by column
+        implicitHeight: menuCol.implicitHeight + 32
+    }
+
+    // ── Processes ──
+    Process { id: lockProc;     command: ["hyprlock"];                          running: false; onRunningChanged: if (!running) root.closeMenu() }
+    Process { id: suspendProc;  command: ["systemctl","suspend"];               running: false; onRunningChanged: if (!running) root.closeMenu() }
+    Process { id: logoutProc;   command: ["hyprctl","dispatch","exit"];         running: false }
+    Process { id: rebootProc;   command: ["systemctl","reboot"];                running: false }
+    Process { id: uefiProc;     command: ["systemctl","reboot","--firmware-setup"]; running: false }
+    Process { id: shutdownProc; command: ["systemctl","poweroff"];              running: false }
+
+    // ── PowerBtn component ──
+    component PowerBtn: Item {
+        id: btn
+        width: parent.width
+        height: 38
+
+        property string label:        "ACTION"
+        property string icon:         "◆"
+        property color  accent:       "#c8b89a"
+        property bool   holdRequired: false
+        property int    holdDuration: 1500
+        property real   holdProgress: 0
+
+        signal activated
+
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(200/255,184/255,154/255, btnMa.containsMouse ? 0.06 : 0.0)
+            Behavior on color { ColorAnimation { duration: 150 } }
+        }
+
+        // Hold progress bar
+        Rectangle {
+            anchors { bottom: parent.bottom; left: parent.left }
+            width: parent.width * btn.holdProgress
+            height: 2
+            color: btn.accent
+            opacity: 0.8
+            visible: btn.holdRequired
+            Behavior on width { NumberAnimation { duration: 16 } }
+        }
+
+        // Left accent line — shows on hover
+        Rectangle {
+            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+            width: 2
+            color: btn.accent
+            opacity: btnMa.containsMouse ? 0.7 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+        }
+
+        Row {
+            anchors { fill: parent; leftMargin: 12; rightMargin: 8 }
+            spacing: 10
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: btn.icon; font.pixelSize: 11
+                color: btn.accent; opacity: 0.8
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: btn.label
+                font.family: "Share Tech Mono"; font.pixelSize: 11
+                font.letterSpacing: 2; font.weight: Font.DemiBold
+                color: btnMa.containsMouse ? btn.accent : Qt.rgba(232/255,216/255,184/255,0.75)
+                Behavior on color { ColorAnimation { duration: 150 } }
+            }
+
+            Item { width: 1; height: 1 }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: btn.holdRequired
+                text: "hold"
+                font.family: "Share Tech Mono"; font.pixelSize: 7; font.letterSpacing: 1
+                color: Qt.rgba(200/255,184/255,154/255,0.25)
+            }
+        }
+
+        // Hold timer
+        Timer {
+            id: holdTimer
+            interval: 16; repeat: true; running: false
+            property real elapsed: 0
+            onTriggered: {
+                elapsed += 16
+                btn.holdProgress = Math.min(1.0, elapsed / btn.holdDuration)
+                if (elapsed >= btn.holdDuration) {
+                    running = false
+                    btn.activated()
+                    btn.holdProgress = 0
+                    elapsed = 0
+                }
+            }
+        }
+
+        MouseArea {
+            id: btnMa
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: { if (!btn.holdRequired) btn.activated() }
+            onPressed:  { if (btn.holdRequired) { holdTimer.elapsed = 0; holdTimer.running = true } }
+            onReleased: {
+                if (btn.holdRequired) {
+                    holdTimer.running = false
+                    btn.holdProgress = 0
+                    holdTimer.elapsed = 0
+                }
+            }
+            onExited: {
+                if (btn.holdRequired && holdTimer.running) {
+                    holdTimer.running = false
+                    btn.holdProgress = 0
+                    holdTimer.elapsed = 0
+                }
+            }
+        }
+    }
+}

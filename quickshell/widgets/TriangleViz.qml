@@ -1,0 +1,123 @@
+import QtQuick
+
+Canvas {
+    id: triCanvas
+    property var hud: null
+
+    property var edgeColors:     []
+    property var flickerOffsets: []
+    property real phase:         0
+
+    // ── Sweep state ──
+    property real sweepX:     -200
+    property bool sweepActive: false
+
+    // ── Watch cava — repaint only on new data ──
+    property var _bars: hud ? hud.cavaBars : []
+    on_BarsChanged: {
+        phase += 0.06
+        requestPaint()
+    }
+
+    // ── Sweep animation — fires every 15-20s ──
+    Timer {
+        id: sweepSpawnTimer
+        interval: 15000 + Math.random() * 5000
+        running: true; repeat: false
+        onTriggered: {
+            triCanvas.sweepX = -200
+            sweepAnim.restart()
+            interval = 15000 + Math.random() * 5000
+            restart()
+        }
+    }
+
+    NumberAnimation {
+        id: sweepAnim
+        target: triCanvas; property: "sweepX"
+        from: -200; to: triCanvas.width + 200
+        duration: 3500; easing.type: Easing.Linear; running: false
+    }
+
+    // Repaint during sweep
+    Timer {
+        interval: 16; running: sweepAnim.running; repeat: true
+        onTriggered: triCanvas.requestPaint()
+    }
+
+    Component.onCompleted: {
+        var palette = [
+            [200/255, 184/255, 154/255],
+            [200/255, 168/255,  74/255],
+            [ 74/255, 154/255, 106/255],
+            [232/255, 216/255, 184/255],
+        ]
+        var cols = 12, rows = 6
+        var ec = [], fo = []
+        for (var i = 0; i < cols * rows * 2; i++) {
+            ec.push(palette[Math.floor(Math.random() * palette.length)])
+            fo.push(Math.random() * Math.PI * 2)
+        }
+        edgeColors     = ec
+        flickerOffsets = fo
+    }
+
+    onPaint: {
+        var ctx = getContext("2d")
+        ctx.clearRect(0, 0, width, height)
+        if (!hud || edgeColors.length === 0) return
+        var bars = hud.cavaBars
+        if (!bars || bars.length === 0) return
+
+        var cols = 12, rows = 6
+        var cellW = width  / cols
+        var cellH = height / rows
+
+        // Sweep gradient — soft band of light
+        var sweepAlpha = sweepAnim.running ? 0.07 : 0.0
+
+        for (var col = 0; col < cols; col++) {
+            var barIdx = Math.floor(col / cols * bars.length)
+            var barVal = bars[barIdx] / 100.0
+            var fadeIn = Math.min(1.0, col / 3.0)
+
+            // Sweep contribution for this column
+            var sweep = 0
+            if (sweepAnim.running) {
+                var colCx = (col + 0.5) * cellW
+                sweep = Math.max(0, 1.0 - Math.abs(colCx - sweepX) / 120.0)
+                sweep = sweep * sweep  // sharpen slightly
+            }
+
+            for (var row = 0; row < rows; row++) {
+                var x0 = col * cellW, y0 = row * cellH
+                var xm = x0 + cellW,  ym = y0 + cellH
+
+                for (var tri = 0; tri < 2; tri++) {
+                    var idx = (col * rows + row) * 2 + tri
+                    var flicker = (Math.sin(phase + flickerOffsets[idx]) + 1) * 0.5
+                    var intensity = (barVal * 0.45 * flicker + sweep * 0.55) * fadeIn
+
+                    ctx.fillStyle = Qt.rgba(200/255, 184/255, 154/255, intensity * 0.10)
+                    ctx.beginPath()
+                    if (tri === 0) {
+                        ctx.moveTo(x0, y0); ctx.lineTo(xm, y0); ctx.lineTo(x0, ym)
+                    } else {
+                        ctx.moveTo(xm, y0); ctx.lineTo(xm, ym); ctx.lineTo(x0, ym)
+                    }
+                    ctx.closePath()
+                    ctx.fill()
+
+                    if (idx < edgeColors.length) {
+                        var ec = edgeColors[idx]
+                        // Edges brighten slightly during sweep
+                        var edgeAlpha = (intensity + sweep * 0.15) * 0.55
+                        ctx.strokeStyle = Qt.rgba(ec[0], ec[1], ec[2], edgeAlpha)
+                        ctx.lineWidth = 0.5
+                        ctx.stroke()
+                    }
+                }
+            }
+        }
+    }
+}

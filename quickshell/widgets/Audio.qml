@@ -1,0 +1,282 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+// ── AUDIO panel content ──
+Item {
+    id: panel
+    required property var hud
+    anchors.fill: parent
+
+    // ── Media state ──
+    property string mpTitle:    ""
+    property string mpArtist:   ""
+    property string mpCoverUrl: ""
+    property bool   mpPlaying:  false
+
+    Process {
+        id: audioMetaProc
+        command: ["playerctl", "metadata", "--format", "{{title}}|{{artist}}|{{mpris:artUrl}}|{{status}}"]
+        stdout: SplitParser {
+            onRead: data => {
+                var p = data.trim().split("|")
+                if (p.length >= 3) {
+                    if (p[0]) panel.mpTitle    = p[0]
+                    if (p[1]) panel.mpArtist   = p[1]
+                    panel.mpCoverUrl = p[2] || ""
+                    panel.mpPlaying  = (p[3] === "Playing")
+                }
+            }
+        }
+    }
+
+    Timer {
+        interval: 2000; running: true; repeat: true
+        onTriggered: audioMetaProc.running = true
+    }
+
+    Component.onCompleted: audioMetaProc.running = true
+
+    // ── Nico-style flying comment model ──
+    ListModel { id: flyingModel }
+
+    // Spawn timer — fires every 10-20s, only when playing
+    Timer {
+        id: spawnTimer
+        interval: 10000 + Math.random() * 10000
+        running: panel.mpPlaying && panel.mpTitle !== ""
+        repeat: false
+        onTriggered: {
+            if (panel.mpPlaying && panel.mpTitle !== "") {
+                flyingModel.append({
+                    yPos:  innerArea.height * (0.55 + Math.random() * 0.30),
+                    title: panel.mpTitle,
+                    artist: panel.mpArtist
+                })
+            }
+            // Reschedule with new random interval
+            interval = 10000 + Math.random() * 10000
+            restart()
+        }
+    }
+
+    // ── Ticker rows content ──
+    readonly property string jpRow:  "接続中 // データ処理中 // 全システム正常 // 音声解析 // 周波数帯域 // スペクトラム // 信号処理 // 波形検出 // "
+    readonly property string enRow:  "AUDIO SYSTEMS ACTIVE // FREQUENCY ANALYSIS // SIGNAL NOMINAL // SPECTRUM SCAN // WAVEFORM DETECTED // POD LINK STABLE // "
+    readonly property string jp2Row: "音楽再生中 // 周波数変調 // 波形出力 // デジタル処理 // リアルタイム // 解析中 // システム稼働 // 信号強度 // "
+
+    HudPanel {
+        anchors.fill: parent
+        title: "AUDIO"; subtitle: "スペクトラム解析"
+
+        Item {
+            id: innerArea
+            anchors.fill: parent
+            clip: true
+
+            // ── Layer 1: Album art background ──
+            // Album art with right-edge fade
+            Item {
+                id: albumArtContainer
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: parent.height
+                visible: panel.mpCoverUrl !== ""
+                opacity: 0.0
+                clip: true
+                layer.enabled: true
+                z: 0
+
+                Image {
+                    id: albumArt
+                    source: panel.mpCoverUrl
+                    fillMode: Image.PreserveAspectCrop
+                    anchors.fill: parent
+                    smooth: true
+                    z: 0
+                    onStatusChanged: {
+                        albumArtContainer.opacity = (status === Image.Ready) ? 0.07 : 0.0
+                    }
+                }
+
+                Canvas {
+                    anchors.fill: parent
+                    z: 1
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        var grd = ctx.createLinearGradient(width * 0.45, 0, width, 0)
+                        grd.addColorStop(0.0, "rgba(11,10,9,0)")
+                        grd.addColorStop(1.0, "rgba(11,10,9,1)")
+                        ctx.fillStyle = grd
+                        ctx.fillRect(0, 0, width, height)
+                    }
+                }
+
+                Behavior on opacity { NumberAnimation { duration: 800 } }
+            }
+
+
+
+            // ── Layer 2: Scrolling text rows ──
+            Item {
+                anchors.top: parent.top
+                anchors.topMargin: parent.height * 0.18
+                width: parent.width; height: 20; clip: true
+                Text {
+                    id: textRow1
+                    text: panel.jpRow + panel.jpRow
+                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.letterSpacing: 2
+                    color: Qt.rgba(200/255,184/255,154/255,0.07)
+                    NumberAnimation on x {
+                        id: row1Anim
+                        from: 0; to: -textRow1.implicitWidth/2
+                        duration: 18000; loops: Animation.Infinite
+                        running: true; easing.type: Easing.Linear
+                    }
+                    Component.onCompleted: row1Anim.restart()
+                }
+            }
+
+            // Row 2 — English, slow, middle
+            Item {
+                anchors.top: parent.top
+                anchors.topMargin: parent.height * 0.42
+                width: parent.width; height: 20; clip: true
+                Text {
+                    id: textRow2
+                    text: panel.enRow + panel.enRow
+                    font.family: "Share Tech Mono"; font.pixelSize: 11; font.letterSpacing: 1.5
+                    color: Qt.rgba(200/255,184/255,154/255,0.055)
+                    NumberAnimation on x {
+                        id: row2Anim
+                        from: 0; to: -textRow2.implicitWidth/2
+                        duration: 32000; loops: Animation.Infinite
+                        running: true; easing.type: Easing.Linear
+                    }
+                    Component.onCompleted: row2Anim.restart()
+                }
+            }
+
+            // Row 3 — Japanese, medium, lower
+            Item {
+                anchors.top: parent.top
+                anchors.topMargin: parent.height * 0.68
+                width: parent.width; height: 20; clip: true
+                Text {
+                    id: textRow3
+                    text: panel.jp2Row + panel.jp2Row
+                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.letterSpacing: 2
+                    color: Qt.rgba(200/255,184/255,154/255,0.065)
+                    NumberAnimation on x {
+                        id: row3Anim
+                        from: 0; to: -textRow3.implicitWidth/2
+                        duration: 24000; loops: Animation.Infinite
+                        running: true; easing.type: Easing.Linear
+                    }
+                    Component.onCompleted: row3Anim.restart()
+                }
+            }
+
+            // ── Layer 3: Triangle visualiser — disabled pending performance tuning ──
+            // TriangleViz {
+            //     anchors.top: parent.top
+            //     anchors.bottom: parent.bottom
+            //     anchors.right: parent.right
+            //     width: parent.width * 0.55
+            //     z: 1
+            //     hud: panel.hud
+            // }
+
+            // ── Layer 4: Nico-style flying comments ──
+            Repeater {
+                model: flyingModel
+                Item {
+                    id: flyItem
+                    y: model.yPos
+                    x: innerArea.width + 10
+                    height: 28
+                    width: flyRow.implicitWidth
+
+                    Row {
+                        id: flyRow
+                        spacing: 6
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            text: "再生中 //"
+                            font.family: "Share Tech Mono"; font.pixelSize: 11
+                            font.letterSpacing: 1.5
+                            color: Qt.rgba(200/255,184/255,154/255,0.45)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: model.title
+                            font.family: "Share Tech Mono"; font.pixelSize: 14
+                            font.letterSpacing: 1; font.weight: Font.DemiBold
+                            color: Qt.rgba(232/255,216/255,184/255,0.6)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "// " + model.artist
+                            font.family: "Share Tech Mono"; font.pixelSize: 11
+                            font.letterSpacing: 1
+                            color: Qt.rgba(200/255,168/255,74/255,0.7)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    NumberAnimation on x {
+                        from: innerArea.width + 10
+                        to:   -(flyItem.width + 10)
+                        duration: 14000
+                        easing.type: Easing.Linear
+                        running: true
+                        onFinished: flyingModel.remove(index)
+                    }
+                }
+            }
+
+            // ── Layer 5: Cava bars (hang from top) ──
+            Row {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: parent.height
+                spacing: 2
+                z: 2
+
+                Repeater {
+                    model: hud.cavaBars.length > 0 ? hud.cavaBars.length : 48
+                    Item {
+                        width: (parent.parent.width - 47*2) / 48
+                        height: parent.parent.height
+
+                        property real barVal:   hud.cavaBars.length > index ? Math.pow(hud.cavaBars[index] / 100.0, 0.65) * 100.0 : 0
+                        property real barH:     Math.max(2, (parent.height * 0.5) * barVal / 100)
+                        property color barColor: barVal > 80 ? hud.accent : barVal > 50 ? hud.accentGold : hud.inkSoft
+
+                        Rectangle {
+                            anchors.top: parent.top
+                            width: parent.width; height: parent.barH
+                            color: parent.barColor
+                            opacity: 0.25 + (parent.barVal/100)*0.75
+                        }
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.topMargin: parent.barH
+                            width: parent.width; height: parent.barH*0.5
+                            color: parent.barColor
+                            opacity: (0.25+(parent.barVal/100)*0.75)*0.2
+                        }
+                    }
+                }
+            }
+
+            // Top edge line
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width; height: 1
+                color: hud.lineSoft
+            }
+        }
+    }
+}
